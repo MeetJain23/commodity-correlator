@@ -1,0 +1,10 @@
+venv/
+__pycache__/
+*.pyc
+.streamlit/
+day1_prices.csv
+day1_first_pull.py
+day2_correlation.py
+day2_correlation.html
+.DS_Store
+.env
