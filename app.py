@@ -7,7 +7,12 @@ import streamlit as st
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from seasonality import seasonality_table, sector_seasonality_table, sector_month_heatmap_data, MONTH_NAMES
-
+from pattern_matching import (
+    find_historical_analogues,
+    find_current_peers,
+    find_international_leader_matches,
+)
+from universe import INTERNATIONAL
 from universe import COMMODITIES, ALL_STOCKS, STOCKS , STOCK_SECTOR
 from data_fetcher import fetch_all_prices, fetch_returns
 from analytics import (
@@ -37,7 +42,7 @@ with st.spinner("Loading market data... (cached after first load)"):
 st.sidebar.success(f"Loaded {len(prices)} trading days, {len(prices.columns)} tickers")
 
 # --- Three tabs ---
-tab1, tab2, tab3, tab4 = st.tabs(["🪙 By Commodity", "🏢 By Stock", "⚡ Regime Changes", "📅 Seasonality"])
+tab1, tab2, tab3, tab4, tab5 = st.tabs(["🪙 By Commodity", "🏢 By Stock", "⚡ Regime Changes", "📅 Seasonality", "🔍 Pattern Match"])
 
 # ===== TAB 1: Pick a commodity, see top stocks =====
 with tab1:
@@ -230,3 +235,90 @@ with tab4:
             st.plotly_chart(fig, width='stretch')
 
             st.caption("Green = historically positive month for that sector. Red = historically negative. Look for diagonal patterns and stand-out cells.")
+
+            # ===== TAB 5: Pattern Matching =====
+with tab5:
+    st.subheader("Chart pattern matching using Dynamic Time Warping (DTW)")
+    st.caption(
+        "DTW compares chart shapes regardless of time stretching. "
+        "Lower distance = better match. Always look at sample size and outcome dispersion — "
+        "a single past match means nothing; multiple consistent matches mean something."
+    )
+
+    pm_sub1, pm_sub2, pm_sub3 = st.tabs(
+        ["Historical Analogues", "Current Peers", "International Leader Scan"]
+    )
+
+    # --- Historical Analogues ---
+    with pm_sub1:
+        st.markdown("**Where in history did similar patterns occur — and what happened next?**")
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            options = [f"{name}" for name in ALL_STOCKS.values()]
+            choice = st.selectbox("Stock", options, key="pm_hist_stock")
+            chosen_ticker = next(t for t, n in ALL_STOCKS.items() if n == choice)
+        with col2:
+            pattern_window = st.selectbox("Pattern window (days)", [30, 60, 90, 120], index=1, key="pm_hist_win")
+        with col3:
+            forward_horizon = st.selectbox("Forward outcome window (days)", [30, 60, 90], index=1, key="pm_hist_fwd")
+
+        with st.spinner("Scanning history... (this is the slow one — ~10s)"):
+            results = find_historical_analogues(
+                prices, chosen_ticker, window=pattern_window, top_n=5, forward_days=forward_horizon, step_days=10
+            )
+
+        if results.empty:
+            st.warning("Not enough data to find analogues.")
+        else:
+            st.dataframe(results, width='stretch', hide_index=True)
+            # Honest stats
+            avg_fwd = results[f"Forward {forward_horizon}d Return %"].mean()
+            win_rate = (results[f"Forward {forward_horizon}d Return %"] > 0).sum() / len(results) * 100
+            st.info(
+                f"**Across these {len(results)} closest historical matches:** "
+                f"avg forward {forward_horizon}d return = {avg_fwd:.1f}%, "
+                f"win rate = {win_rate:.0f}%. "
+                f"⚠️ Tiny sample — treat as one signal among many, not a forecast."
+            )
+
+    # --- Current Peers ---
+    with pm_sub2:
+        st.markdown("**Which other Indian stocks have a similar shape right now?**")
+        col1, col2 = st.columns(2)
+        with col1:
+            options = list(ALL_STOCKS.values())
+            choice = st.selectbox("Stock", options, key="pm_peer_stock")
+            chosen_ticker = next(t for t, n in ALL_STOCKS.items() if n == choice)
+        with col2:
+            peer_window = st.selectbox("Pattern window (days)", [30, 60, 90], index=1, key="pm_peer_win")
+
+        results = find_current_peers(prices, chosen_ticker, window=peer_window, top_n=10)
+        if results.empty:
+            st.warning("Not enough data.")
+        else:
+            st.dataframe(results, width='stretch', hide_index=True)
+            st.caption("Stocks with similar recent shapes. Useful for: 'this is moving — what else might move next?'")
+
+    # --- International Leader Scan ---
+    with pm_sub3:
+        st.markdown("**Premise:** International stocks sometimes lead Indian peers. Pick an international ticker; the system finds Indian stocks whose CURRENT pattern matches the international stock's pattern from ~30 days ago.")
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            intl_options = [f"{name}" for name in INTERNATIONAL.values()]
+            intl_choice = st.selectbox("International ticker", intl_options, key="pm_intl_stock")
+            intl_ticker = next(t for t, n in INTERNATIONAL.items() if n == intl_choice)
+        with col2:
+            lead = st.selectbox("Lead days", [15, 30, 45, 60], index=1, key="pm_intl_lead")
+        with col3:
+            intl_window = st.selectbox("Pattern window (days)", [30, 60, 90], index=1, key="pm_intl_win")
+
+        results = find_international_leader_matches(prices, intl_ticker, lead_days=lead, window=intl_window, top_n=10)
+        if results.empty:
+            st.warning("Not enough data.")
+        else:
+            st.dataframe(results, width='stretch', hide_index=True)
+            st.caption(
+                "⚠️ Interpretation note: matching shapes don't mean matching outcomes. "
+                "Indian and international stocks have different liquidity, ownership, and macro drivers. "
+                "Use this as an idea generator only."
+            )

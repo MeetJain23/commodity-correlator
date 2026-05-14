@@ -81,3 +81,31 @@ STOCK_SECTOR = {
     for sector_name, stocks in STOCKS.items()
     for ticker in stocks
 }
+# International tickers — used for "leader scan" and pattern matching against global moves
+INTERNATIONAL = {
+    # US tech / semis (often lead Indian IT and EMS)
+    "NVDA": "Nvidia",
+    "AMD": "AMD",
+    "AVGO": "Broadcom",
+    "TSM": "TSMC",
+    "INTC": "Intel",
+    # US industrials & materials
+    "CAT": "Caterpillar",
+    "DE": "Deere",
+    "FCX": "Freeport-McMoRan",  # copper
+    "NUE": "Nucor",              # steel
+    # US autos
+    "TSLA": "Tesla",
+    "F": "Ford",
+    "GM": "GM",
+    # US consumer
+    "PG": "Procter & Gamble",
+    "KO": "Coca-Cola",
+    # US energy
+    "XOM": "ExxonMobil",
+    "CVX": "Chevron",
+    # India ADRs (useful as direct cross-checks)
+    "INFY": "Infosys ADR",
+    "WIT":  "Wipro ADR",
+    "HDB":  "HDFC Bank ADR",
+}

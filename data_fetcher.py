@@ -16,7 +16,8 @@ def fetch_all_prices(period: str = "5y") -> pd.DataFrame:
     Pull closing prices for every commodity + every stock in our universe.
     Returns a single DataFrame: rows = dates, columns = tickers.
     """
-    all_tickers = list(COMMODITIES.values()) + list(ALL_STOCKS.keys())
+    from universe import COMMODITIES, ALL_STOCKS, INTERNATIONAL
+    all_tickers = list(COMMODITIES.values()) + list(ALL_STOCKS.keys()) + list(INTERNATIONAL.keys())
 
     raw = yf.download(
         all_tickers,
