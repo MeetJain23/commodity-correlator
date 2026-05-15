@@ -1,27 +1,15 @@
 """
-DTW-based chart pattern matching.
-The three core operations:
-  1. find_historical_analogues — given a recent pattern, find similar past patterns
-     across the universe and report what happened next.
-  2. find_current_peers — find other stocks whose recent patterns match yours.
-  3. find_international_leaders — find Indian stocks matching a global ticker's
-     recent past (premise: global moves can lead Indian ones).
+DTW-based chart pattern matching — v2 with sector filtering and richer output.
 """
 
 import numpy as np
 import pandas as pd
 from dtaidistance import dtw
-from typing import List, Tuple
 
-from universe import ALL_STOCKS, INTERNATIONAL
+from universe import ALL_STOCKS, INTERNATIONAL, STOCK_SECTOR
 
 
 def _normalize(series: np.ndarray) -> np.ndarray:
-    """
-    Z-score normalize a price/return series so DTW compares SHAPES, not levels.
-    Without this, a stock at ₹100 and one at ₹5000 would never match
-    even if their shapes are identical.
-    """
     s = np.asarray(series, dtype=float)
     s = s[~np.isnan(s)]
     if len(s) == 0 or s.std() == 0:
@@ -29,11 +17,7 @@ def _normalize(series: np.ndarray) -> np.ndarray:
     return (s - s.mean()) / s.std()
 
 
-def _pattern_from_prices(prices_series: pd.Series, end_date, window: int) -> np.ndarray:
-    """
-    Extract a window of prices ending on end_date and convert to a normalized shape.
-    We use cumulative log-returns so all patterns are scale-free.
-    """
+def _pattern_from_prices(prices_series: pd.Series, end_date, window: int):
     end_idx = prices_series.index.get_indexer([end_date], method="pad")[0]
     if end_idx < window:
         return None
@@ -45,6 +29,29 @@ def _pattern_from_prices(prices_series: pd.Series, end_date, window: int) -> np.
     return _normalize(cumulative)
 
 
+def _raw_pattern_path(prices_series: pd.Series, end_date, window: int):
+    """
+    Returns the actual normalized cumulative return path for plotting (not just for DTW).
+    """
+    return _pattern_from_prices(prices_series, end_date, window)
+
+
+def _forward_path(prices_series: pd.Series, end_date, forward_days: int):
+    """
+    The forward `forward_days` of normalized cumulative returns AFTER end_date.
+    Used to show 'what happened next' visually.
+    """
+    end_idx = prices_series.index.get_indexer([end_date], method="pad")[0]
+    forward_end_idx = min(end_idx + forward_days, len(prices_series) - 1)
+    if forward_end_idx <= end_idx:
+        return None
+    forward_prices = prices_series.iloc[end_idx: forward_end_idx + 1].values
+    if np.isnan(forward_prices).any() or len(forward_prices) < 2:
+        return None
+    log_returns = np.diff(np.log(forward_prices))
+    return np.cumsum(log_returns)
+
+
 def find_historical_analogues(
     prices_df: pd.DataFrame,
     query_ticker: str,
@@ -52,36 +59,43 @@ def find_historical_analogues(
     top_n: int = 5,
     forward_days: int = 60,
     step_days: int = 10,
-) -> pd.DataFrame:
+    same_sector_only: bool = True,
+    max_distance: float = 3.0,
+) -> tuple:
     """
-    Scan the entire universe's history for patterns similar to the query stock's
-    last `window` days. For each match, also report the forward return.
-    step_days: only check every Nth date in history to avoid scanning every single day
-               (massive speedup, minimal accuracy loss).
+    Returns (results_df, query_pattern, forward_paths_dict)
+    forward_paths_dict maps row_index -> {'pattern': np.ndarray, 'forward': np.ndarray}
+    so the app layer can plot each match.
     """
     query_prices = prices_df[query_ticker].dropna()
     if len(query_prices) < window + 1:
-        return pd.DataFrame()
+        return pd.DataFrame(), None, {}
 
     query_pattern = _pattern_from_prices(query_prices, query_prices.index[-1], window)
     if query_pattern is None:
-        return pd.DataFrame()
+        return pd.DataFrame(), None, {}
+
+    # Decide which tickers to scan
+    if same_sector_only and query_ticker in STOCK_SECTOR:
+        query_sector = STOCK_SECTOR[query_ticker]
+        scan_tickers = [t for t in prices_df.columns
+                        if t in STOCK_SECTOR and STOCK_SECTOR[t] == query_sector]
+    else:
+        scan_tickers = [t for t in prices_df.columns
+                        if t in ALL_STOCKS or t in INTERNATIONAL]
 
     candidates = []
+    paths = {}
+    counter = 0
 
-    # Scan every ticker (including the query ticker itself — self-analogues are valid)
-    all_tickers = [t for t in prices_df.columns if t in ALL_STOCKS or t in INTERNATIONAL]
-
-    for ticker in all_tickers:
+    for ticker in scan_tickers:
         series = prices_df[ticker].dropna()
         if len(series) < window + forward_days + 30:
             continue
 
-        # Walk through history at step_days intervals
-        # Stop forward_days before the end so we have data to evaluate forward returns
         for i in range(window, len(series) - forward_days, step_days):
             end_date = series.index[i]
-            # Skip very recent dates for non-self-tickers to avoid overlap with the query window
+            # Skip patterns that overlap the query's own recent window
             if ticker == query_ticker and i >= len(series) - window - forward_days:
                 continue
 
@@ -90,24 +104,36 @@ def find_historical_analogues(
                 continue
 
             distance = dtw.distance(query_pattern, candidate_pattern)
+            if distance > max_distance:
+                continue
 
-            # Forward return: from end_date to forward_days later
-            forward_end_idx = min(i + forward_days, len(series) - 1)
-            forward_return = (series.iloc[forward_end_idx] / series.iloc[i] - 1) * 100
+            forward_path = _forward_path(series, end_date, forward_days)
+            if forward_path is None:
+                continue
+
+            forward_return = (np.exp(forward_path[-1]) - 1) * 100
 
             candidates.append({
                 "Ticker": ticker,
                 "Name": ALL_STOCKS.get(ticker) or INTERNATIONAL.get(ticker, ticker),
+                "Sector": STOCK_SECTOR.get(ticker, "—"),
                 "Pattern End Date": end_date.date(),
                 "DTW Distance": round(distance, 3),
                 f"Forward {forward_days}d Return %": round(forward_return, 2),
+                "_pattern": candidate_pattern,
+                "_forward": forward_path,
             })
+            counter += 1
 
     if not candidates:
-        return pd.DataFrame()
+        return pd.DataFrame(), query_pattern, {}
 
-    df = pd.DataFrame(candidates).sort_values("DTW Distance").reset_index(drop=True)
-    return df.head(top_n)
+    df = pd.DataFrame(candidates).sort_values("DTW Distance").head(top_n).reset_index(drop=True)
+    # Extract the patterns/paths separately so the table is clean
+    paths = {i: {"pattern": df.loc[i, "_pattern"], "forward": df.loc[i, "_forward"]}
+             for i in df.index}
+    display_df = df.drop(columns=["_pattern", "_forward"])
+    return display_df, query_pattern, paths
 
 
 def find_current_peers(
@@ -115,22 +141,30 @@ def find_current_peers(
     query_ticker: str,
     window: int = 60,
     top_n: int = 10,
-) -> pd.DataFrame:
-    """
-    Find other stocks whose CURRENT (last `window` days) pattern matches the query's.
-    No forward-return calculation here — these are concurrent peers, not historical analogues.
-    """
+    same_sector_only: bool = False,
+    max_distance: float = 3.0,
+) -> tuple:
+    """Returns (results_df, query_pattern, peer_patterns_dict)"""
     query_prices = prices_df[query_ticker].dropna()
     if len(query_prices) < window + 1:
-        return pd.DataFrame()
+        return pd.DataFrame(), None, {}
 
     query_pattern = _pattern_from_prices(query_prices, query_prices.index[-1], window)
     if query_pattern is None:
-        return pd.DataFrame()
+        return pd.DataFrame(), None, {}
+
+    if same_sector_only and query_ticker in STOCK_SECTOR:
+        query_sector = STOCK_SECTOR[query_ticker]
+        scan_tickers = [t for t in ALL_STOCKS
+                        if t != query_ticker and STOCK_SECTOR.get(t) == query_sector]
+    else:
+        scan_tickers = [t for t in ALL_STOCKS if t != query_ticker]
 
     rows = []
-    for ticker in ALL_STOCKS:
-        if ticker == query_ticker or ticker not in prices_df.columns:
+    patterns = {}
+
+    for ticker in scan_tickers:
+        if ticker not in prices_df.columns:
             continue
         series = prices_df[ticker].dropna()
         if len(series) < window + 1:
@@ -141,19 +175,26 @@ def find_current_peers(
             continue
 
         distance = dtw.distance(query_pattern, candidate_pattern)
-        # Recent return for context
+        if distance > max_distance:
+            continue
+
         recent_return = (series.iloc[-1] / series.iloc[-window] - 1) * 100
 
         rows.append({
             "Ticker": ticker,
             "Name": ALL_STOCKS[ticker],
+            "Sector": STOCK_SECTOR.get(ticker, "—"),
             "DTW Distance": round(distance, 3),
             f"Recent {window}d Return %": round(recent_return, 2),
+            "_pattern": candidate_pattern,
         })
 
     if not rows:
-        return pd.DataFrame()
-    return pd.DataFrame(rows).sort_values("DTW Distance").reset_index(drop=True).head(top_n)
+        return pd.DataFrame(), query_pattern, {}
+
+    df = pd.DataFrame(rows).sort_values("DTW Distance").head(top_n).reset_index(drop=True)
+    patterns = {i: df.loc[i, "_pattern"] for i in df.index}
+    return df.drop(columns=["_pattern"]), query_pattern, patterns
 
 
 def find_international_leader_matches(
@@ -162,30 +203,27 @@ def find_international_leader_matches(
     lead_days: int = 30,
     window: int = 60,
     top_n: int = 10,
-) -> pd.DataFrame:
-    """
-    Premise: international names sometimes 'lead' Indian counterparts by ~30 days.
-    Take an international ticker's pattern from `lead_days` ago, find Indian stocks
-    whose CURRENT pattern matches that historical international pattern.
-    Interpretation: the Indian stock may now be where the international one was a month ago.
-    """
+    max_distance: float = 3.0,
+) -> tuple:
+    """Returns (results_df, intl_pattern, intl_forward, peer_patterns_dict)"""
     if international_ticker not in prices_df.columns:
-        return pd.DataFrame()
+        return pd.DataFrame(), None, None, {}
 
     intl_series = prices_df[international_ticker].dropna()
     if len(intl_series) < window + lead_days + 1:
-        return pd.DataFrame()
+        return pd.DataFrame(), None, None, {}
 
-    # International pattern from `lead_days` ago
     intl_end_date = intl_series.index[-lead_days]
     intl_pattern = _pattern_from_prices(intl_series, intl_end_date, window)
     if intl_pattern is None:
-        return pd.DataFrame()
+        return pd.DataFrame(), None, None, {}
 
-    # How the international stock moved AFTER this pattern (the "future" we're checking against)
+    intl_forward = _forward_path(intl_series, intl_end_date, lead_days)
     intl_subsequent_return = (intl_series.iloc[-1] / intl_series.iloc[-lead_days] - 1) * 100
 
     rows = []
+    patterns = {}
+
     for ticker in ALL_STOCKS:
         if ticker not in prices_df.columns:
             continue
@@ -198,13 +236,21 @@ def find_international_leader_matches(
             continue
 
         distance = dtw.distance(intl_pattern, current_pattern)
+        if distance > max_distance:
+            continue
+
         rows.append({
             "Ticker": ticker,
             "Name": ALL_STOCKS[ticker],
+            "Sector": STOCK_SECTOR.get(ticker, "—"),
             "DTW Distance": round(distance, 3),
             f"If pattern holds, suggested {lead_days}d move %": round(intl_subsequent_return, 2),
+            "_pattern": current_pattern,
         })
 
     if not rows:
-        return pd.DataFrame()
-    return pd.DataFrame(rows).sort_values("DTW Distance").reset_index(drop=True).head(top_n)
+        return pd.DataFrame(), intl_pattern, intl_forward, {}
+
+    df = pd.DataFrame(rows).sort_values("DTW Distance").head(top_n).reset_index(drop=True)
+    patterns = {i: df.loc[i, "_pattern"] for i in df.index}
+    return df.drop(columns=["_pattern"]), intl_pattern, intl_forward, patterns

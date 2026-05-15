@@ -5,6 +5,7 @@ Run with: streamlit run app.py
 
 import streamlit as st
 import plotly.graph_objects as go
+import numpy as np
 from plotly.subplots import make_subplots
 from seasonality import seasonality_table, sector_seasonality_table, sector_month_heatmap_data, MONTH_NAMES
 from pattern_matching import (
@@ -236,89 +237,252 @@ with tab4:
 
             st.caption("Green = historically positive month for that sector. Red = historically negative. Look for diagonal patterns and stand-out cells.")
 
-            # ===== TAB 5: Pattern Matching =====
+           # ===== TAB 5: Pattern Matching =====
 with tab5:
     st.subheader("Chart pattern matching using Dynamic Time Warping (DTW)")
     st.caption(
-        "DTW compares chart shapes regardless of time stretching. "
-        "Lower distance = better match. Always look at sample size and outcome dispersion — "
-        "a single past match means nothing; multiple consistent matches mean something."
+        "DTW compares chart shapes regardless of speed. Sector filtering keeps matches relevant. "
+        "Always read the forward-return spread — tight clusters = signal, wide spreads = noise."
     )
 
     pm_sub1, pm_sub2, pm_sub3 = st.tabs(
         ["Historical Analogues", "Current Peers", "International Leader Scan"]
     )
 
-    # --- Historical Analogues ---
+    # ============== HISTORICAL ANALOGUES ==============
     with pm_sub1:
-        st.markdown("**Where in history did similar patterns occur — and what happened next?**")
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            options = [f"{name}" for name in ALL_STOCKS.values()]
+        c1, c2, c3, c4 = st.columns([2, 1, 1, 1])
+        with c1:
+            options = list(ALL_STOCKS.values())
             choice = st.selectbox("Stock", options, key="pm_hist_stock")
             chosen_ticker = next(t for t, n in ALL_STOCKS.items() if n == choice)
-        with col2:
-            pattern_window = st.selectbox("Pattern window (days)", [30, 60, 90, 120], index=1, key="pm_hist_win")
-        with col3:
-            forward_horizon = st.selectbox("Forward outcome window (days)", [30, 60, 90], index=1, key="pm_hist_fwd")
+        with c2:
+            pattern_window = st.selectbox("Pattern (days)", [30, 60, 90, 120], index=1, key="pm_hist_win")
+        with c3:
+            forward_horizon = st.selectbox("Forward (days)", [30, 60, 90], index=1, key="pm_hist_fwd")
+        with c4:
+            sector_only = st.checkbox("Same sector only", value=True, key="pm_hist_sector",
+                                       help="Limits matches to the query stock's sector. Recommended ON — cross-sector matches are usually noise.")
 
-        with st.spinner("Scanning history... (this is the slow one — ~10s)"):
-            results = find_historical_analogues(
-                prices, chosen_ticker, window=pattern_window, top_n=5, forward_days=forward_horizon, step_days=10
+        # Query stock's recent performance card
+        query_series = prices[chosen_ticker].dropna()
+        recent_ret = (query_series.iloc[-1] / query_series.iloc[-pattern_window] - 1) * 100
+        st.markdown(
+            f"**Query:** {choice} — last {pattern_window} days: "
+            f"<span style='color:{'#22c55e' if recent_ret >= 0 else '#ef4444'};font-weight:600'>{recent_ret:+.1f}%</span>",
+            unsafe_allow_html=True,
+        )
+
+        with st.spinner("Scanning history..."):
+            results, query_pat, paths = find_historical_analogues(
+                prices, chosen_ticker,
+                window=pattern_window, top_n=5,
+                forward_days=forward_horizon, step_days=10,
+                same_sector_only=sector_only,
             )
 
         if results.empty:
-            st.warning("Not enough data to find analogues.")
+            st.warning(
+                "No close historical matches found. Try: (a) turning off 'Same sector only', "
+                "(b) shorter pattern window, or (c) different stock. "
+                "An empty result is informative — means this stock's current shape is unusual."
+            )
         else:
+            # Summary header
+            fwd_col = f"Forward {forward_horizon}d Return %"
+            avg_fwd = results[fwd_col].mean()
+            win_rate = (results[fwd_col] > 0).sum() / len(results) * 100
+            spread = results[fwd_col].max() - results[fwd_col].min()
+
+            summary_color = "#22c55e" if avg_fwd > 0 else "#ef4444"
+            spread_signal = "tight cluster ✓" if spread < 15 else "wide spread — noisy" if spread > 30 else "moderate spread"
+
+            st.markdown(f"""
+            <div style='background:#1e293b;padding:14px 18px;border-radius:8px;margin:12px 0;border-left:4px solid {summary_color}'>
+              <div style='display:flex;gap:30px;flex-wrap:wrap'>
+                <div><div style='color:#94a3b8;font-size:12px'>AVG FORWARD RETURN</div>
+                     <div style='color:{summary_color};font-size:22px;font-weight:700'>{avg_fwd:+.1f}%</div></div>
+                <div><div style='color:#94a3b8;font-size:12px'>WIN RATE</div>
+                     <div style='color:#e2e8f0;font-size:22px;font-weight:700'>{win_rate:.0f}%</div></div>
+                <div><div style='color:#94a3b8;font-size:12px'>SPREAD</div>
+                     <div style='color:#e2e8f0;font-size:22px;font-weight:700'>{spread:.1f}pp</div>
+                     <div style='color:#94a3b8;font-size:11px'>{spread_signal}</div></div>
+                <div><div style='color:#94a3b8;font-size:12px'>SAMPLE SIZE</div>
+                     <div style='color:#e2e8f0;font-size:22px;font-weight:700'>{len(results)}</div></div>
+              </div>
+            </div>
+            """, unsafe_allow_html=True)
+
             st.dataframe(results, width='stretch', hide_index=True)
-            # Honest stats
-            avg_fwd = results[f"Forward {forward_horizon}d Return %"].mean()
-            win_rate = (results[f"Forward {forward_horizon}d Return %"] > 0).sum() / len(results) * 100
+
+            # Per-match charts — the visual proof
+            st.markdown("### Visual comparison: query pattern vs each historical match")
+            st.caption("Left half of each chart = the matched historical pattern. Right half = what happened next.")
+
+            for idx, row in results.iterrows():
+                pattern = paths[idx]["pattern"]
+                forward = paths[idx]["forward"]
+                fwd_ret = row[fwd_col]
+                color = "#22c55e" if fwd_ret >= 0 else "#ef4444"
+
+                fig = go.Figure()
+                # Query pattern (the present)
+                fig.add_trace(go.Scatter(
+                    y=query_pat, mode="lines", name=f"Now: {choice}",
+                    line=dict(color="#60a5fa", width=2.5)
+                ))
+                # Historical pattern (the past)
+                fig.add_trace(go.Scatter(
+                    y=pattern, mode="lines", name=f"Then: {row['Name']} ({row['Pattern End Date']})",
+                    line=dict(color="#cbd5e1", width=2, dash="dot")
+                ))
+                # What happened next, shifted to start where the pattern ends
+                forward_x = list(range(len(pattern) - 1, len(pattern) - 1 + len(forward)))
+                fig.add_trace(go.Scatter(
+                    x=forward_x, y=pattern[-1] + forward, mode="lines",
+                    name=f"Forward {forward_horizon}d ({fwd_ret:+.1f}%)",
+                    line=dict(color=color, width=2.5)
+                ))
+                fig.update_layout(
+                    height=280,
+                    margin=dict(l=10, r=10, t=40, b=10),
+                    title=dict(
+                        text=f"<b>{row['Name']}</b> · {row['Pattern End Date']} · DTW {row['DTW Distance']} · "
+                             f"<span style='color:{color}'>{fwd_ret:+.1f}%</span>",
+                        font=dict(size=14)
+                    ),
+                    template="plotly_dark",
+                    showlegend=True,
+                    legend=dict(orientation="h", y=-0.15),
+                    yaxis_title="Normalized return path",
+                    xaxis_title="Days",
+                )
+                st.plotly_chart(fig, width='stretch')
+
             st.info(
-                f"**Across these {len(results)} closest historical matches:** "
-                f"avg forward {forward_horizon}d return = {avg_fwd:.1f}%, "
-                f"win rate = {win_rate:.0f}%. "
-                f"⚠️ Tiny sample — treat as one signal among many, not a forecast."
+                "**How to read this:** each grey dotted line is a past chart that looked like the blue (now) line. "
+                "The green/red line is what happened next in that past case. If most green/red lines move the same way, "
+                "it's a real signal. If they're all over the place, the pattern isn't predictive — move on."
             )
 
-    # --- Current Peers ---
+    # ============== CURRENT PEERS ==============
     with pm_sub2:
-        st.markdown("**Which other Indian stocks have a similar shape right now?**")
-        col1, col2 = st.columns(2)
-        with col1:
-            options = list(ALL_STOCKS.values())
-            choice = st.selectbox("Stock", options, key="pm_peer_stock")
+        c1, c2, c3 = st.columns([2, 1, 1])
+        with c1:
+            choice = st.selectbox("Stock", list(ALL_STOCKS.values()), key="pm_peer_stock")
             chosen_ticker = next(t for t, n in ALL_STOCKS.items() if n == choice)
-        with col2:
-            peer_window = st.selectbox("Pattern window (days)", [30, 60, 90], index=1, key="pm_peer_win")
+        with c2:
+            peer_window = st.selectbox("Window (days)", [30, 60, 90], index=1, key="pm_peer_win")
+        with c3:
+            peer_sector_only = st.checkbox("Same sector only", value=False, key="pm_peer_sector",
+                                            help="OFF by default — peer scan often reveals cross-sector co-movement.")
 
-        results = find_current_peers(prices, chosen_ticker, window=peer_window, top_n=10)
+        results, query_pat, peer_pats = find_current_peers(
+            prices, chosen_ticker, window=peer_window, top_n=8, same_sector_only=peer_sector_only,
+        )
+
         if results.empty:
-            st.warning("Not enough data.")
+            st.warning("No close peers under current threshold.")
         else:
             st.dataframe(results, width='stretch', hide_index=True)
-            st.caption("Stocks with similar recent shapes. Useful for: 'this is moving — what else might move next?'")
 
-    # --- International Leader Scan ---
+            st.markdown("### Visual overlay: query vs current peers")
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(
+                y=query_pat, mode="lines", name=f"{choice} (you)",
+                line=dict(color="#60a5fa", width=3)
+            ))
+            peer_colors = ["#fbbf24", "#a78bfa", "#34d399", "#f87171", "#fb923c", "#22d3ee", "#e879f9", "#fcd34d"]
+            for idx, row in results.iterrows():
+                fig.add_trace(go.Scatter(
+                    y=peer_pats[idx], mode="lines",
+                    name=f"{row['Name']} (d={row['DTW Distance']})",
+                    line=dict(color=peer_colors[idx % len(peer_colors)], width=1.5, dash="dot"),
+                    opacity=0.7,
+                ))
+            fig.update_layout(
+                height=420, template="plotly_dark",
+                title=f"Stocks moving like {choice} — last {peer_window} days",
+                yaxis_title="Normalized return path",
+                xaxis_title="Days",
+                legend=dict(orientation="h", y=-0.2),
+                margin=dict(l=10, r=10, t=50, b=10),
+            )
+            st.plotly_chart(fig, width='stretch')
+            st.caption("Solid blue = your stock. Dotted lines = stocks moving similarly right now. Useful for spotting laggards/leaders within a co-moving group.")
+
+    # ============== INTERNATIONAL LEADER SCAN ==============
     with pm_sub3:
-        st.markdown("**Premise:** International stocks sometimes lead Indian peers. Pick an international ticker; the system finds Indian stocks whose CURRENT pattern matches the international stock's pattern from ~30 days ago.")
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            intl_options = [f"{name}" for name in INTERNATIONAL.values()]
-            intl_choice = st.selectbox("International ticker", intl_options, key="pm_intl_stock")
-            intl_ticker = next(t for t, n in INTERNATIONAL.items() if n == intl_choice)
-        with col2:
-            lead = st.selectbox("Lead days", [15, 30, 45, 60], index=1, key="pm_intl_lead")
-        with col3:
-            intl_window = st.selectbox("Pattern window (days)", [30, 60, 90], index=1, key="pm_intl_win")
+        st.markdown(
+            "**Premise:** international stocks sometimes lead Indian peers. "
+            "We take an international ticker's pattern from `lead_days` ago and find Indian stocks "
+            "whose *current* pattern matches it."
+        )
 
-        results = find_international_leader_matches(prices, intl_ticker, lead_days=lead, window=intl_window, top_n=10)
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            intl_choice = st.selectbox("International ticker", list(INTERNATIONAL.values()), key="pm_intl_stock")
+            intl_ticker = next(t for t, n in INTERNATIONAL.items() if n == intl_choice)
+        with c2:
+            lead = st.selectbox("Lead days", [15, 30, 45, 60], index=1, key="pm_intl_lead")
+        with c3:
+            intl_window = st.selectbox("Pattern (days)", [30, 60, 90], index=1, key="pm_intl_win")
+
+        results, intl_pat, intl_fwd, peer_pats = find_international_leader_matches(
+            prices, intl_ticker, lead_days=lead, window=intl_window, top_n=8,
+        )
+
         if results.empty:
-            st.warning("Not enough data.")
+            st.warning("No close matches.")
         else:
+            # How did the international stock itself move after the pattern?
+            intl_return = (np.exp(intl_fwd[-1]) - 1) * 100 if intl_fwd is not None else 0
+            color = "#22c55e" if intl_return >= 0 else "#ef4444"
+
+            st.markdown(
+                f"**{intl_choice}** moved "
+                f"<span style='color:{color};font-weight:700'>{intl_return:+.1f}%</span> "
+                f"in the {lead} days after its reference pattern.",
+                unsafe_allow_html=True,
+            )
+
             st.dataframe(results, width='stretch', hide_index=True)
-            st.caption(
-                "⚠️ Interpretation note: matching shapes don't mean matching outcomes. "
-                "Indian and international stocks have different liquidity, ownership, and macro drivers. "
-                "Use this as an idea generator only."
+
+            st.markdown(f"### How {intl_choice}'s past pattern + its forward move compares to today's Indian matches")
+            fig = go.Figure()
+            # International past pattern
+            fig.add_trace(go.Scatter(
+                y=intl_pat, mode="lines", name=f"{intl_choice} (then)",
+                line=dict(color="#cbd5e1", width=2, dash="dot")
+            ))
+            # International forward (what happened after)
+            forward_x = list(range(len(intl_pat) - 1, len(intl_pat) - 1 + len(intl_fwd)))
+            fig.add_trace(go.Scatter(
+                x=forward_x, y=intl_pat[-1] + intl_fwd, mode="lines",
+                name=f"{intl_choice} (forward {lead}d)",
+                line=dict(color=color, width=3)
+            ))
+            # Top Indian matches as faint overlays
+            peer_colors = ["#fbbf24", "#a78bfa", "#34d399", "#f87171", "#fb923c"]
+            for idx in list(results.index)[:5]:
+                row = results.loc[idx]
+                fig.add_trace(go.Scatter(
+                    y=peer_pats[idx], mode="lines",
+                    name=f"{row['Name']} (now, d={row['DTW Distance']})",
+                    line=dict(color=peer_colors[idx % len(peer_colors)], width=1.5),
+                    opacity=0.6,
+                ))
+            fig.update_layout(
+                height=450, template="plotly_dark",
+                yaxis_title="Normalized return path",
+                xaxis_title="Days",
+                legend=dict(orientation="h", y=-0.2),
+                margin=dict(l=10, r=10, t=30, b=10),
+            )
+            st.plotly_chart(fig, width='stretch')
+
+            st.info(
+                f"**Interpretation:** if the pattern holds, the Indian matches above might track {intl_choice}'s "
+                f"forward move ({intl_return:+.1f}%) over the next {lead} days. "
+                f"⚠️ This is a hypothesis, not a forecast — different macro, different flows."
             )
