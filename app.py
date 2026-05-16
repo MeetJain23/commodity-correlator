@@ -61,32 +61,43 @@ with tab1:
         st.markdown(f"**Top {top_n} stocks ranked by absolute correlation with {commodity_name}** (window = {window}d)")
         st.dataframe(ranked, width='stretch', hide_index=True)
 
-    # Chart: pick the #1 stock and show its history with this commodity
+    # Let the user pick which stock to deep-dive on
     if len(ranked) > 0:
-        top_ticker = ranked.iloc[0]["Ticker"]
-        top_name = ranked.iloc[0]["Stock"]
-        corr_series = rolling_correlation(returns, commodity_ticker, top_ticker, window).dropna()
+        st.markdown("---")
+        st.markdown("### Deep dive — pick any stock from the table above")
+
+        chart_options = [f"{row['Stock']} (corr={row['Correlation Now']})"
+                         for _, row in ranked.iterrows()]
+        selected_chart = st.selectbox("Chart this stock vs the commodity:",
+                                       chart_options, key="tab1_chart_pick")
+        chart_idx = chart_options.index(selected_chart)
+
+        chart_ticker = ranked.iloc[chart_idx]["Ticker"]
+        chart_name = ranked.iloc[chart_idx]["Stock"]
+        corr_series = rolling_correlation(returns, commodity_ticker, chart_ticker, window).dropna()
 
         fig = make_subplots(
             rows=2, cols=1, shared_xaxes=True,
             vertical_spacing=0.08,
-            subplot_titles=(f"{commodity_name} and {top_name} — Prices", f"Rolling {window}d Correlation"),
+            subplot_titles=(f"{commodity_name} and {chart_name} — Prices", f"Rolling {window}d Correlation"),
             specs=[[{"secondary_y": True}], [{"secondary_y": False}]],
             row_heights=[0.55, 0.45]
         )
         fig.add_trace(go.Scatter(x=prices.index, y=prices[commodity_ticker], name=commodity_name, line=dict(color="gold")), row=1, col=1)
-        fig.add_trace(go.Scatter(x=prices.index, y=prices[top_ticker], name=top_name, line=dict(color="royalblue")), row=1, col=1, secondary_y=True)
+        fig.add_trace(go.Scatter(x=prices.index, y=prices[chart_ticker], name=chart_name, line=dict(color="royalblue")), row=1, col=1, secondary_y=True)
         fig.add_trace(go.Scatter(x=corr_series.index, y=corr_series, name="Correlation", line=dict(color="crimson", width=2)), row=2, col=1)
         fig.add_hline(y=0, line_dash="dash", line_color="gray", row=2, col=1)
         fig.update_yaxes(range=[-1, 1], row=2, col=1)
         fig.update_layout(height=650, template="plotly_white", hovermode="x unified")
         st.plotly_chart(fig, width='stretch')
 
-        # One-line interpretation
-        corr_now = ranked.iloc[0]["Correlation Now"]
-        corr_old = ranked.iloc[0]["Correlation 30d Ago"]
+        # Interpretation based on selected stock
+        corr_now = ranked.iloc[chart_idx]["Correlation Now"]
+        corr_old = ranked.iloc[chart_idx]["Correlation 30d Ago"]
         direction = "strengthened" if corr_now > corr_old else "weakened"
-        st.info(f"**Interpretation:** {top_name} shows {window}d correlation of **{corr_now}** with {commodity_name}. Has **{direction}** from {corr_old} a month ago.")
+        st.info(f"**{chart_name}** shows {window}d correlation of **{corr_now}** with {commodity_name}. "
+                f"Has **{direction}** from {corr_old} a month ago.")
+        
 
 # ===== TAB 2: Pick a stock, see top commodities =====
 with tab2:
@@ -105,24 +116,39 @@ with tab2:
     st.dataframe(ranked, width='stretch', hide_index=True)
 
     if len(ranked) > 0:
-        top_commodity_name = ranked.iloc[0]["Commodity"]
-        top_commodity_ticker = COMMODITIES[top_commodity_name]
-        corr_series = rolling_correlation(returns, top_commodity_ticker, selected_ticker, window).dropna()
+        st.markdown("---")
+        st.markdown("### Deep dive — pick any commodity from the table above")
+
+        chart_options = [f"{row['Commodity']} (corr={row['Correlation Now']})"
+                         for _, row in ranked.iterrows()]
+        selected_chart = st.selectbox("Chart this commodity vs the stock:",
+                                       chart_options, key="tab2_chart_pick")
+        chart_idx = chart_options.index(selected_chart)
+
+        chart_commodity_name = ranked.iloc[chart_idx]["Commodity"]
+        chart_commodity_ticker = COMMODITIES[chart_commodity_name]
+        corr_series = rolling_correlation(returns, chart_commodity_ticker, selected_ticker, window).dropna()
 
         fig = make_subplots(
             rows=2, cols=1, shared_xaxes=True,
             vertical_spacing=0.08,
-            subplot_titles=(f"{selected_name} and {top_commodity_name} — Prices", f"Rolling {window}d Correlation"),
+            subplot_titles=(f"{selected_name} and {chart_commodity_name} — Prices", f"Rolling {window}d Correlation"),
             specs=[[{"secondary_y": True}], [{"secondary_y": False}]],
             row_heights=[0.55, 0.45]
         )
         fig.add_trace(go.Scatter(x=prices.index, y=prices[selected_ticker], name=selected_name, line=dict(color="royalblue")), row=1, col=1)
-        fig.add_trace(go.Scatter(x=prices.index, y=prices[top_commodity_ticker], name=top_commodity_name, line=dict(color="gold")), row=1, col=1, secondary_y=True)
+        fig.add_trace(go.Scatter(x=prices.index, y=prices[chart_commodity_ticker], name=chart_commodity_name, line=dict(color="gold")), row=1, col=1, secondary_y=True)
         fig.add_trace(go.Scatter(x=corr_series.index, y=corr_series, name="Correlation", line=dict(color="crimson", width=2)), row=2, col=1)
         fig.add_hline(y=0, line_dash="dash", line_color="gray", row=2, col=1)
         fig.update_yaxes(range=[-1, 1], row=2, col=1)
         fig.update_layout(height=650, template="plotly_white", hovermode="x unified")
         st.plotly_chart(fig, width='stretch')
+
+        corr_now = ranked.iloc[chart_idx]["Correlation Now"]
+        corr_old = ranked.iloc[chart_idx]["Correlation 30d Ago"]
+        direction = "strengthened" if corr_now > corr_old else "weakened"
+        st.info(f"**{selected_name}** shows {window}d correlation of **{corr_now}** with {chart_commodity_name}. "
+                f"Has **{direction}** from {corr_old} a month ago.")
 
 # ===== TAB 3: Regime changes =====
 with tab3:
