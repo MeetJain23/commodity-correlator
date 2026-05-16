@@ -22,7 +22,12 @@ from analytics import (
     rank_commodities_by_stock,
     regime_change_scan,
 )
-
+from supply_chain import SUPPLY_CHAIN, get_suppliers_of, get_customers_of, all_tickers_in_graph
+from supply_chain_analytics import (
+    suppliers_table_with_validation,
+    customers_table_with_validation,
+    cascade_signal,
+)
 # --- Page setup ---
 st.set_page_config(page_title="Commodity ↔ Stock Correlator", page_icon="📈", layout="wide")
 st.title("📈 Commodity ↔ Stock Correlator (India)")
@@ -43,7 +48,7 @@ with st.spinner("Loading market data... (cached after first load)"):
 st.sidebar.success(f"Loaded {len(prices)} trading days, {len(prices.columns)} tickers")
 
 # --- Three tabs ---
-tab1, tab2, tab3, tab4, tab5 = st.tabs(["🪙 By Commodity", "🏢 By Stock", "⚡ Regime Changes", "📅 Seasonality", "🔍 Pattern Match"])
+tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["🪙 By Commodity", "🏢 By Stock", "⚡ Regime Changes", "📅 Seasonality", "🔍 Pattern Match", "🔗 Supply Chain"])
 
 # ===== TAB 1: Pick a commodity, see top stocks =====
 with tab1:
@@ -113,11 +118,14 @@ with tab2:
     selected_ticker = next(t for t, n in ALL_STOCKS.items() if n == selected_name)
 
     ranked = rank_commodities_by_stock(returns, selected_ticker, window=window)
-    st.dataframe(ranked, width='stretch', hide_index=True)
 
-    if len(ranked) > 0:
+    if ranked is None or len(ranked) == 0:
+        st.warning(f"No data available for {selected_name}. The ticker may have failed to download.")
+    else:
+        st.dataframe(ranked, width='stretch', hide_index=True)
         st.markdown("---")
         st.markdown("### Deep dive — pick any commodity from the table above")
+        # ... rest of the chart code (indented under else)
 
         chart_options = [f"{row['Commodity']} (corr={row['Correlation Now']})"
                          for _, row in ranked.iterrows()]
@@ -511,4 +519,113 @@ with tab5:
                 f"**Interpretation:** if the pattern holds, the Indian matches above might track {intl_choice}'s "
                 f"forward move ({intl_return:+.1f}%) over the next {lead} days. "
                 f"⚠️ This is a hypothesis, not a forecast — different macro, different flows."
+            )
+# ===== TAB 6: Supply Chain =====
+with tab6:
+    st.subheader("Supply chain mapping & cascade signals")
+    st.caption(
+        "Causal relationships between Indian stocks. Curated by hand from annual reports — "
+        "partial coverage, ~60 relationships across major sectors. "
+        "Every supposed link is validated against actual price correlation in the data."
+    )
+
+    graph_tickers = all_tickers_in_graph()
+    graph_stocks = {t: ALL_STOCKS[t] for t in graph_tickers if t in ALL_STOCKS}
+
+    sc_sub1, sc_sub2, sc_sub3 = st.tabs(
+        ["Find Suppliers", "Find Customers", "⚡ Cascade Signal"]
+    )
+
+    # ============ SUB 1: Find Suppliers ============
+    with sc_sub1:
+        st.markdown("**Pick a customer — see who supplies them, and whether the price data confirms the link.**")
+
+        customers_in_graph = sorted([(t, n) for t, n in graph_stocks.items() if get_suppliers_of(t)],
+                                     key=lambda x: x[1])
+        if not customers_in_graph:
+            st.warning("No customers in the graph yet.")
+        else:
+            options = [n for _, n in customers_in_graph]
+            choice = st.selectbox("Customer", options, key="sc_customer")
+            customer_ticker = next(t for t, n in customers_in_graph if n == choice)
+
+            df = suppliers_table_with_validation(returns, customer_ticker, window=window)
+            if df.empty:
+                st.warning("No suppliers mapped yet for this stock.")
+            else:
+                st.dataframe(df, width='stretch', hide_index=True)
+                st.caption(
+                    "**How to read this:** Supply Chain Weight = how dependent the supplier is on this customer. "
+                    "Correlation Now = whether their stock returns actually move together in current data. "
+                    "Strong supply chain link + strong correlation = clean signal. "
+                    "Strong supply chain link + weak correlation = relationship exists on paper but isn't priced together (could be opportunity OR could mean the link is overstated)."
+                )
+
+    # ============ SUB 2: Find Customers ============
+    with sc_sub2:
+        st.markdown("**Pick a supplier — see who buys from them, and validate the link.**")
+
+        suppliers_in_graph = sorted([(t, n) for t, n in graph_stocks.items() if get_customers_of(t)],
+                                     key=lambda x: x[1])
+        if not suppliers_in_graph:
+            st.warning("No suppliers in the graph yet.")
+        else:
+            options = [n for _, n in suppliers_in_graph]
+            choice = st.selectbox("Supplier", options, key="sc_supplier")
+            supplier_ticker = next(t for t, n in suppliers_in_graph if n == choice)
+
+            df = customers_table_with_validation(returns, supplier_ticker, window=window)
+            if df.empty:
+                st.warning("No customers mapped for this supplier.")
+            else:
+                st.dataframe(df, width='stretch', hide_index=True)
+
+    # ============ SUB 3: CASCADE SIGNAL ============
+    with sc_sub3:
+        st.markdown("### The integrated signal — Phase 4 payoff")
+        st.markdown(
+            "**Scenario:** A major company just moved. Which of its suppliers should you watch? "
+            "This view scores suppliers using four independent signals:"
+        )
+        st.markdown(
+            "- **Supply chain weight** — how revenue-dependent the supplier is on this customer\n"
+            "- **Validated correlation** — do their stock returns actually move together?\n"
+            "- **Lag** — has the supplier already moved, or is it still lagging the customer's move (catch-up potential)?\n"
+            "- **Seasonality** — is this historically a good month for the supplier?"
+        )
+
+        customers_in_graph = sorted([(t, n) for t, n in graph_stocks.items() if get_suppliers_of(t)],
+                                     key=lambda x: x[1])
+        options = [n for _, n in customers_in_graph]
+        choice = st.selectbox("Pick the customer that just moved", options, key="sc_cascade")
+        customer_ticker = next(t for t, n in customers_in_graph if n == choice)
+
+        cascade_df = cascade_signal(returns, prices, customer_ticker, window=window)
+        if cascade_df.empty:
+            st.warning("No suppliers mapped for this customer yet.")
+        else:
+            # Highlight the customer's own recent move
+            customer_5d = cascade_df.iloc[0]["Customer 5d %"] if len(cascade_df) > 0 else 0
+            move_color = "#22c55e" if customer_5d >= 0 else "#ef4444"
+            st.markdown(
+                f"**{choice}** moved <span style='color:{move_color};font-weight:700'>{customer_5d:+.1f}%</span> "
+                f"in the last 5 days. Suppliers ranked by composite cascade score below:",
+                unsafe_allow_html=True,
+            )
+
+            st.dataframe(cascade_df, width='stretch', hide_index=True)
+
+            # Top pick highlight
+            top = cascade_df.iloc[0]
+            st.success(
+                f"**Top cascade pick: {top['Supplier']}** — Score {top['Score']}. "
+                f"Supply chain weight {top['SC Weight']}, correlation {top['Corr Now']}, "
+                f"already moved {top['Supplier 5d %']:+.1f}% (lag vs customer = {top['Lag (5d)']:+.1f}pp), "
+                f"historical avg return this month = {top['Season Month %']:+.1f}%."
+            )
+
+            st.caption(
+                "⚠️ **Reality check:** This is a *ranked list of candidates worth investigating*, not a buy signal. "
+                "Multi-factor scoring reduces noise but cannot create certainty. "
+                "Position sizing and risk management are where money is actually made or lost."
             )
