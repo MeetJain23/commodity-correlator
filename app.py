@@ -33,7 +33,7 @@ from supply_chain_analytics import (
 
 st.set_page_config(page_title="Commodity ↔ Stock Correlator", page_icon="📈", layout="wide")
 st.title("📈 Commodity ↔ Stock Correlator (India)")
-st.caption("Phase 1 of a bigger system. Built on free data from Yahoo Finance.")
+st.caption("Six modules: correlation, seasonality, pattern matching, supply chain mapping, cascade signals, backtest. Built on free data.")
 
 # --- Sidebar: shared controls ---
 st.sidebar.header("Settings")
