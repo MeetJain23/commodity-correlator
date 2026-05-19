@@ -13,6 +13,7 @@ from pattern_matching import (
     find_current_peers,
     find_international_leader_matches,
 )
+from backtest import run_backtest
 from universe import INTERNATIONAL
 from universe import COMMODITIES, ALL_STOCKS, STOCKS , STOCK_SECTOR
 from data_fetcher import fetch_all_prices, fetch_returns
@@ -29,6 +30,7 @@ from supply_chain_analytics import (
     cascade_signal,
 )
 # --- Page setup ---
+
 st.set_page_config(page_title="Commodity ↔ Stock Correlator", page_icon="📈", layout="wide")
 st.title("📈 Commodity ↔ Stock Correlator (India)")
 st.caption("Phase 1 of a bigger system. Built on free data from Yahoo Finance.")
@@ -48,7 +50,7 @@ with st.spinner("Loading market data... (cached after first load)"):
 st.sidebar.success(f"Loaded {len(prices)} trading days, {len(prices.columns)} tickers")
 
 # --- Three tabs ---
-tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["🪙 By Commodity", "🏢 By Stock", "⚡ Regime Changes", "📅 Seasonality", "🔍 Pattern Match", "🔗 Supply Chain"])
+tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs(["🪙 By Commodity", "🏢 By Stock", "⚡ Regime Changes", "📅 Seasonality", "🔍 Pattern Match", "🔗 Supply Chain","🧪 Backtest"])
 
 # ===== TAB 1: Pick a commodity, see top stocks =====
 with tab1:
@@ -629,3 +631,116 @@ with tab6:
                 "Multi-factor scoring reduces noise but cannot create certainty. "
                 "Position sizing and risk management are where money is actually made or lost."
             )
+# ===== TAB 7: Backtest =====
+with tab7:
+    st.subheader("Backtest: does the cascade signal actually predict forward returns?")
+    st.caption(
+        "Tests the cascade signal against three benchmarks across historical trigger events. "
+        "Conservative methodology: no look-ahead bias, transaction costs included, honest verdict."
+    )
+
+    with st.expander("ℹ️ How this backtest is built (read this once)"):
+        st.markdown("""
+        **What we're testing:** when a customer stock moves significantly, does the cascade signal's
+        top-ranked supplier outperform alternatives over the next N days?
+
+        **Three benchmarks:**
+        - **Random supplier** — picks one supplier at random from the mapped set
+        - **Sector portfolio** — equal-weight return of ALL mapped suppliers
+        - **Universe average** — average return across all 73 stocks
+
+        **Bias controls built in:**
+        - *No look-ahead:* cascade signal at time T uses only data available at time T
+        - *Transaction costs:* 0.3% per side (0.6% round-trip) applied to every cascade trade
+        - *Survivorship bias acknowledged:* we test only on the current universe (limitation)
+        - *No overfitting:* cascade weights are fixed, not tuned to backtest results
+
+        **Honest verdict:** the system computes a verdict automatically from the numbers,
+        with thresholds set upfront. Negative verdicts are reported as clearly as positive ones.
+        """)
+
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        trigger_pct = st.selectbox("Trigger: customer move %", [3.0, 5.0, 7.0], index=1)
+    with c2:
+        holding_days = st.selectbox("Holding period (days)", [5, 10, 20], index=1)
+    with c3:
+        direction = st.selectbox("Direction", ["up", "down", "both"], index=0)
+
+    if st.button("▶ Run backtest", type="primary"):
+        with st.spinner("Running backtest... (typically 20-40 seconds)"):
+            result = run_backtest(
+                returns, prices,
+                trigger_pct=trigger_pct,
+                holding_days=holding_days,
+                direction=direction,
+                correlation_window=window,
+            )
+
+        if result["status"] == "insufficient_events":
+            st.warning(result["message"])
+        elif result["status"] == "no_valid_trades":
+            st.warning(f"Found {result['n_events']} triggers but no valid trades could be computed.")
+        else:
+            # Verdict banner
+            v_color_map = {"success": "success", "info": "info", "warning": "warning", "error": "error"}
+            getattr(st, v_color_map[result["verdict_color"]])(f"**Verdict:** {result['verdict']}")
+
+            # Metrics row
+            m = result["metrics"]
+            mc1, mc2, mc3, mc4 = st.columns(4)
+            mc1.metric("Trades", result["n_trades"])
+            mc2.metric("Avg Excess vs Portfolio", f"{m['avg_excess_vs_portfolio']:+.2f}pp")
+            mc3.metric("Win Rate vs Portfolio", f"{m['win_rate_vs_portfolio']:.0f}%")
+            mc4.metric("Sharpe-like", f"{m['sharpe_like']:.2f}")
+
+            st.markdown("---")
+            st.markdown("### Equity curve — cumulative excess return over time")
+            st.caption("Each trade contributes its excess return vs the sector portfolio. "
+                       "Upward trend = signal has cumulative edge. Flat or downward = no edge.")
+
+            equity_fig = go.Figure()
+            equity_fig.add_trace(go.Scatter(
+                x=result["trades"]["Date"],
+                y=result["trades"]["Cumulative Excess %"],
+                mode="lines+markers",
+                line=dict(color="#22c55e" if m['avg_excess_vs_portfolio'] > 0 else "#ef4444", width=2),
+                fill="tozeroy",
+                fillcolor="rgba(34,197,94,0.1)" if m['avg_excess_vs_portfolio'] > 0 else "rgba(239,68,68,0.1)",
+            ))
+            equity_fig.add_hline(y=0, line_dash="dash", line_color="gray")
+            equity_fig.update_layout(
+                height=350, template="plotly_white",
+                yaxis_title="Cumulative excess return (pp)",
+                xaxis_title="Trade date",
+                margin=dict(l=10, r=10, t=20, b=10),
+            )
+            st.plotly_chart(equity_fig, width='stretch')
+
+            st.markdown("### Distribution of per-trade outcomes")
+            st.caption("Where the trades actually landed. A tight distribution centered above 0 = real edge. "
+                       "Wide distribution centered near 0 = noise.")
+
+            hist_fig = go.Figure(data=[go.Histogram(
+                x=result["trades"]["Excess vs Portfolio"],
+                nbinsx=20,
+                marker_color="#60a5fa",
+            )])
+            hist_fig.add_vline(x=0, line_dash="dash", line_color="gray")
+            hist_fig.add_vline(x=m['avg_excess_vs_portfolio'], line_color="#ef4444", line_width=2,
+                                annotation_text=f"Mean: {m['avg_excess_vs_portfolio']:+.1f}pp")
+            hist_fig.update_layout(
+                height=300, template="plotly_white",
+                xaxis_title="Excess return vs portfolio (pp)",
+                yaxis_title="Number of trades",
+                margin=dict(l=10, r=10, t=30, b=10),
+            )
+            st.plotly_chart(hist_fig, width='stretch')
+
+            st.markdown("### Breakdown by customer sector")
+            st.caption("Does the signal work better in some sectors than others?")
+            st.dataframe(result["by_sector"], width='stretch', hide_index=True)
+
+            st.markdown("### All trades (audit trail)")
+            st.caption("Every individual trade the backtest executed. Sanity-check: do these dates and stocks make sense?")
+            st.dataframe(result["trades"], width='stretch', hide_index=True)
