@@ -6,16 +6,23 @@ Each addition has a specific analytical reason — see comments per group.
 
 # Commodities — liquid US-listed ETFs as proxies.
 COMMODITIES = {
-    "Gold":      "GLD",
-    "Silver":    "SLV",
-    "Crude Oil": "USO",
-    "Copper":    "CPER",
-    "Natural Gas": "UNG",
-    "Aluminum":  "JJU",
-    "Sugar":     "CANE",
-    "Steel":     "SLX",
+    "Gold":         "GLD",
+    "Silver":       "SLV",
+    "Crude Oil":    "USO",
+    "Brent Crude":  "BNO",       # different from WTI, often diverges
+    "Copper":       "CPER",
+    "Natural Gas":  "UNG",
+    "Aluminum":     "JJU",
+    "Zinc":         "ZINC=F",    # try this; if it fails we'll swap
+    "Sugar":        "CANE",
+    "Steel":        "SLX",
+    "Wheat":        "WEAT",
+    "Corn":         "CORN",
+    "Cotton":       "BAL",
+    "Coffee":       "JO",
 }
 
+# Indian stocks grouped by sector.
 # Indian stocks grouped by sector.
 STOCKS = {
     "Jewellery": {
@@ -43,6 +50,9 @@ STOCKS = {
         "NMDC.NS":       "NMDC",
         "SAIL.NS":       "SAIL",
         "NATIONALUM.NS": "NALCO",
+        "JINDALSTEL.NS": "Jindal Steel",
+        "HINDZINC.NS":   "Hindustan Zinc",
+        "MOIL.NS":       "MOIL",
     },
     "Oil & Gas": {
         "RELIANCE.NS":  "Reliance",
@@ -52,6 +62,9 @@ STOCKS = {
         "HINDPETRO.NS": "HPCL",
         "GAIL.NS":      "GAIL",
         "PETRONET.NS":  "Petronet LNG",
+        "OIL.NS":       "Oil India",
+        "MGL.NS":       "Mahanagar Gas",
+        "IGL.NS":       "Indraprastha Gas",
     },
     "Sugar": {
         "BALRAMCHIN.NS": "Balrampur Chini",
@@ -65,33 +78,41 @@ STOCKS = {
         "BAJAJ-AUTO.NS": "Bajaj Auto",
         "HEROMOTOCO.NS": "Hero MotoCorp",
         "BHARATFORG.NS": "Bharat Forge",
+        "EICHERMOT.NS":  "Eicher Motors",
+        "TVSMOTOR.NS":   "TVS Motor",
+        "ASHOKLEY.NS":   "Ashok Leyland",
+        "BOSCHLTD.NS":   "Bosch",
+        "MOTHERSON.NS":  "Motherson Sumi",
+        "SUBROS.NS":     "Subros",
+        "SONACOMS.NS":   "Sona BLW",
+        "EXIDEIND.NS":   "Exide Industries",
+        "MRF.NS":        "MRF",
+        "APOLLOTYRE.NS": "Apollo Tyres",
+        "CEATLTD.NS":    "CEAT",
     },
-    # --- NEW GROUPS BELOW ---
-
-    # Capital Goods & Infra — completes the steel/aluminum/copper DOWNSTREAM picture.
-    # These are real buyers of metals; supply chain cascades from metals now flow somewhere.
     "Capital Goods & Infra": {
-        "LT.NS":        "Larsen & Toubro",
-        "SIEMENS.NS":   "Siemens India",
-        "ABB.NS":       "ABB India",
-        "BHEL.NS":      "BHEL",
+        "LT.NS":         "Larsen & Toubro",
+        "SIEMENS.NS":    "Siemens India",
+        "ABB.NS":        "ABB India",
+        "BHEL.NS":       "BHEL",
         "CUMMINSIND.NS": "Cummins India",
-        "THERMAX.NS":   "Thermax",
-        "KEC.NS":       "KEC International",
-        "KPIL.NS":      "Kalpataru Projects",
+        "THERMAX.NS":    "Thermax",
+        "KEC.NS":        "KEC International",
+        "KPIL.NS":       "Kalpataru Projects",
+        "GRINDWELL.NS":  "Grindwell Norton",
+        "AIAENG.NS":     "AIA Engineering",
+        "TIMKEN.NS":     "Timken India",
+        "SKFINDIA.NS":   "SKF India",
     },
-
-    # Cement — own cyclical commodity-like behavior + strong monsoon seasonality.
     "Cement": {
         "ULTRACEMCO.NS": "UltraTech Cement",
         "SHREECEM.NS":   "Shree Cement",
         "AMBUJACEM.NS":  "Ambuja Cement",
         "ACC.NS":        "ACC",
         "DALBHARAT.NS":  "Dalmia Bharat",
+        "JKCEMENT.NS":   "JK Cement",
+        "RAMCOCEM.NS":   "Ramco Cements",
     },
-
-    # Specialty Chemicals & Fertilizers — crude/gas exposure on input side, complex downstream.
-    # Huge gap in earlier universe.
     "Specialty Chemicals & Fertilizers": {
         "SRF.NS":         "SRF",
         "AARTIIND.NS":    "Aarti Industries",
@@ -99,31 +120,120 @@ STOCKS = {
         "UPL.NS":         "UPL",
         "COROMANDEL.NS":  "Coromandel International",
         "CHAMBLFERT.NS":  "Chambal Fertilizers",
+        "PIIND.NS":       "PI Industries",
+        "GNFC.NS":        "GNFC",
+        "NAVINFLUOR.NS":  "Navin Fluorine",
+        "VINATIORGA.NS":  "Vinati Organics",
+        "ATUL.NS":        "Atul",
+        "TATACHEM.NS":    "Tata Chemicals",
     },
-
-    # Consumer / FMCG — strong festive seasonality, sugar/agri downstream.
     "Consumer / FMCG": {
         "NESTLEIND.NS":  "Nestle India",
         "BRITANNIA.NS":  "Britannia",
         "MARICO.NS":     "Marico",
         "DABUR.NS":      "Dabur",
         "TATACONSUM.NS": "Tata Consumer",
+        "HINDUNILVR.NS": "HUL",
+        "ITC.NS":        "ITC",
+        "GODREJCP.NS":   "Godrej Consumer",
+        "COLPAL.NS":     "Colgate-Palmolive",
+        "EMAMILTD.NS":   "Emami",
     },
-
-    # IT & Tech — Indian side of global tech move (for international leader scans).
     "IT & Tech": {
-        "TCS.NS":         "TCS",
-        "INFY.NS":        "Infosys",
-        "WIPRO.NS":       "Wipro",
-        "HCLTECH.NS":     "HCL Tech",
-        "TECHM.NS":       "Tech Mahindra",
+        "TCS.NS":      "TCS",
+        "INFY.NS":     "Infosys",
+        "WIPRO.NS":    "Wipro",
+        "HCLTECH.NS":  "HCL Tech",
+        "TECHM.NS":    "Tech Mahindra",
+        "PERSISTENT.NS": "Persistent Systems",
+        "COFORGE.NS":  "Coforge",
+        "MPHASIS.NS":  "Mphasis",
     },
-
-    # Telecom — already had some, formalized as a sector for clarity.
+    "EMS & AI-adjacent Tech": {
+        "KAYNES.NS":    "Kaynes Technology",
+        "DIXON.NS":     "Dixon Technologies",
+        "SYRMA.NS":     "Syrma SGS",
+        "AMBER.NS":     "Amber Enterprises",
+        "CYIENT.NS":    "Cyient",
+        "TATAELXSI.NS": "Tata Elxsi",
+        "LTTS.NS":      "L&T Technology Services",
+    },
+    "Defense & Aerospace": {
+        "HAL.NS":          "Hindustan Aeronautics",
+        "BEL.NS":          "Bharat Electronics",
+        "BDL.NS":          "Bharat Dynamics",
+        "MAZDOCK.NS":      "Mazagon Dock",
+        "COCHINSHIP.NS":   "Cochin Shipyard",
+        "DATAPATTNS.NS":   "Data Patterns",
+        "PARAS.NS":        "Paras Defence",
+        "ASTRAMICRO.NS":   "Astra Microwave",
+    },
+    "Power & Utilities": {
+        "NTPC.NS":     "NTPC",
+        "POWERGRID.NS": "Power Grid Corp",
+        "TATAPOWER.NS": "Tata Power",
+        "JSWENERGY.NS": "JSW Energy",
+        "ADANIGREEN.NS": "Adani Green Energy",
+        "ADANIPOWER.NS": "Adani Power",
+        "NHPC.NS":     "NHPC",
+        "SJVN.NS":     "SJVN",
+        "TORNTPOWER.NS": "Torrent Power",
+        "CESC.NS":     "CESC",
+    },
+    "Pharma & Healthcare": {
+        "SUNPHARMA.NS":  "Sun Pharma",
+        "DRREDDY.NS":    "Dr Reddy's",
+        "CIPLA.NS":      "Cipla",
+        "DIVISLAB.NS":   "Divi's Labs",
+        "LUPIN.NS":      "Lupin",
+        "AUROPHARMA.NS": "Aurobindo Pharma",
+        "GLENMARK.NS":   "Glenmark Pharma",
+        "TORNTPHARM.NS": "Torrent Pharma",
+        "ZYDUSLIFE.NS":  "Zydus Lifesciences",
+        "ALKEM.NS":      "Alkem Labs",
+        "BIOCON.NS":     "Biocon",
+        "APOLLOHOSP.NS": "Apollo Hospitals",
+        "MAXHEALTH.NS":  "Max Healthcare",
+        "FORTIS.NS":     "Fortis Healthcare",
+    },
+    "Banking & Financials": {
+        "HDFCBANK.NS":  "HDFC Bank",
+        "ICICIBANK.NS": "ICICI Bank",
+        "SBIN.NS":      "State Bank of India",
+        "AXISBANK.NS":  "Axis Bank",
+        "KOTAKBANK.NS": "Kotak Mahindra Bank",
+        "INDUSINDBK.NS": "IndusInd Bank",
+        "BAJFINANCE.NS": "Bajaj Finance",
+        "BAJAJFINSV.NS": "Bajaj Finserv",
+        "SBILIFE.NS":    "SBI Life",
+        "HDFCLIFE.NS":   "HDFC Life",
+        "ICICIPRULI.NS": "ICICI Prudential Life",
+        "ICICIGI.NS":    "ICICI Lombard",
+    },
+    "Realty & Construction": {
+        "DLF.NS":         "DLF",
+        "GODREJPROP.NS":  "Godrej Properties",
+        "OBEROIRLTY.NS":  "Oberoi Realty",
+        "PRESTIGE.NS":    "Prestige Estates",
+        "PHOENIXLTD.NS":  "Phoenix Mills",
+        "SOBHA.NS":       "Sobha",
+    },
+    "Aviation & Hospitality": {
+        "INDIGO.NS":       "InterGlobe Aviation",
+        "INDHOTEL.NS":     "Indian Hotels",
+        "LEMONTREE.NS":    "Lemon Tree Hotels",
+    },
     "Telecom": {
         "BHARTIARTL.NS": "Bharti Airtel",
         "INDUSTOWER.NS": "Indus Towers",
         "HFCL.NS":       "HFCL",
+        "TEJASNET.NS":   "Tejas Networks",
+    },
+    "Textiles & Agri-export": {
+        "PAGEIND.NS":   "Page Industries",
+        "TRENT.NS":     "Trent",
+        "AVANTIFEED.NS": "Avanti Feeds",
+        "APEXFROZN.NS": "Apex Frozen Foods",
     },
 }
 

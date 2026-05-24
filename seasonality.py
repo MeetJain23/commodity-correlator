@@ -63,15 +63,19 @@ def sector_seasonality_table(returns_df: pd.DataFrame, sector_name: str) -> pd.D
     """
     Average seasonality across all stocks in a sector.
     Equal-weighted: each stock contributes equally.
+    Skips tickers not present in returns_df (failed downloads).
     """
     if sector_name not in STOCKS:
         return pd.DataFrame()
 
-    sector_tickers = list(STOCKS[sector_name].keys())
-    # Equal-weight daily returns across the sector's stocks
+    # Filter to only tickers actually present in the returns DataFrame
+    sector_tickers = [t for t in STOCKS[sector_name].keys() if t in returns_df.columns]
+    if not sector_tickers:
+        return pd.DataFrame()
+
+    # Equal-weight daily returns across the sector's available stocks
     sector_returns = returns_df[sector_tickers].mean(axis=1)
     return seasonality_table(sector_returns)
-
 
 def sector_month_heatmap_data(returns_df: pd.DataFrame) -> pd.DataFrame:
     """
