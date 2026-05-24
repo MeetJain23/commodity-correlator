@@ -289,9 +289,12 @@ with tab5:
     with pm_sub1:
         c1, c2, c3, c4 = st.columns([2, 1, 1, 1])
         with c1:
-            options = list(ALL_STOCKS.values())
+            options = [name for ticker, name in ALL_STOCKS.items() if ticker in prices.columns]
             choice = st.selectbox("Stock", options, key="pm_hist_stock")
             chosen_ticker = next(t for t, n in ALL_STOCKS.items() if n == choice)
+        if chosen_ticker not in prices.columns:
+            st.warning(f"{choice} data unavailable. Try a different stock.")
+            st.stop()
         with c2:
             pattern_window = st.selectbox("Pattern (days)", [30, 60, 90, 120], index=1, key="pm_hist_win")
         with c3:

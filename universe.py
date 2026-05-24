@@ -13,7 +13,6 @@ COMMODITIES = {
     "Copper":       "CPER",
     "Natural Gas":  "UNG",
     "Aluminum":     "JJU",
-    "Zinc":         "ZINC=F",    # try this; if it fails we'll swap
     "Sugar":        "CANE",
     "Steel":        "SLX",
     "Wheat":        "WEAT",
@@ -233,7 +232,6 @@ STOCKS = {
         "PAGEIND.NS":   "Page Industries",
         "TRENT.NS":     "Trent",
         "AVANTIFEED.NS": "Avanti Feeds",
-        "APEXFROZN.NS": "Apex Frozen Foods",
     },
 }
 
