@@ -1,5 +1,17 @@
 # Observations Log
+## Project Status: Complete (May 2026)
 
+This system is now in **maintenance mode**. Active development moves to a separate project building on different premises (macro overlay, international supply chains, fundamental drivers).
+
+Final scope:
+- 140+ NSE-listed stocks across 22 sectors
+- 13 global commodities
+- 90 hand-curated supply chain relationships
+- 6 analytical modules + self-critiquing backtest engine
+- Conservative methodology, honest negative finding on cascade signal
+
+What this system is: a manual scanner for exploring correlation, seasonality, patterns, and supply chain dynamics in Indian markets.
+What this system is not: a trading system. (Backtest finding documented below.)
 A running record of findings from running the Commodity ↔ Stock Correlator on Indian markets.
 Each entry: specific numbers, a hypothesis, and why it matters.
 
@@ -95,4 +107,4 @@ can come back and check whether the read of the data held up.
 
 ---
 
-*Last updated: 2026-05-19*
+*Last updated: 2026-05-24*
