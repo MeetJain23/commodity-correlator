@@ -526,10 +526,13 @@ with tab5:
 with tab6:
     st.subheader("Supply chain mapping & cascade signals")
     st.caption(
-        "Causal relationships between Indian stocks. Curated by hand from annual reports — "
-        "partial coverage, ~60 relationships across major sectors. "
-        "Every supposed link is validated against actual price correlation in the data."
-    )
+    "Hand-curated supply chain graph: ~90 customer-supplier relationships across "
+    "major Indian sectors (Auto, Metals, Capital Goods, Cement, Power, Defense, Pharma, "
+    "Telecom, Oil & Gas, Realty). Coverage is intentionally partial — banks, IT services, "
+    "and hotels don't have meaningful upstream supplier relationships in the Indian listed "
+    "universe, so they're price-data-only in this tab. Every supposed link is validated "
+    "against actual price correlation in the data."
+)
 
     graph_tickers = all_tickers_in_graph()
     graph_stocks = {t: ALL_STOCKS[t] for t in graph_tickers if t in ALL_STOCKS}

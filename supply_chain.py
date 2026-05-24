@@ -122,6 +122,67 @@ SUPPLY_CHAIN = [
     ("ABB.NS",         "LT.NS",         0.04, "Electrical and automation systems"),
     ("CUMMINSIND.NS",  "LT.NS",         0.03, "Engines for construction equipment"),
     ("THERMAX.NS",     "LT.NS",         0.02, "Process equipment for infra"),
+
+    # ============ DEFENSE & AEROSPACE ============
+    # Defense ecosystem is opaque but a few known relationships:
+    # HAL is the prime defense contractor; BEL provides avionics/electronics;
+    # Bharat Forge has a defense division supplying components;
+    # Mazagon Dock builds warships using SAIL/Tata Steel.
+    ("BEL.NS",         "HAL.NS",         0.15, "Avionics, radars, electronic warfare systems"),
+    ("BHARATFORG.NS",  "HAL.NS",         0.05, "Aerospace forgings, defense components"),
+    ("ASTRAMICRO.NS",  "HAL.NS",         0.20, "RF and microwave subsystems for radar"),
+    ("ASTRAMICRO.NS",  "BEL.NS",         0.25, "Microwave components for BEL systems"),
+    ("DATAPATTNS.NS",  "BEL.NS",         0.20, "Defense electronics, ATE systems"),
+    ("DATAPATTNS.NS",  "HAL.NS",         0.10, "Avionics test equipment"),
+    ("TATASTEEL.NS",   "MAZDOCK.NS",     0.04, "Naval grade steel for shipbuilding"),
+    ("SAIL.NS",        "MAZDOCK.NS",     0.05, "Steel plates for ship hulls"),
+    ("SAIL.NS",        "COCHINSHIP.NS",  0.04, "Steel for shipbuilding"),
+
+    # ============ POWER & UTILITIES ============
+    # Power ecosystem: NTPC/Tata Power/JSW Energy are generators;
+    # Power Grid transmits; T&D infra companies (KEC, KPIL) build the grid.
+    ("SAIL.NS",        "POWERGRID.NS",   0.05, "Steel for transmission towers and substations"),
+    ("KEC.NS",         "POWERGRID.NS",   0.20, "Transmission tower & line EPC for Power Grid"),
+    ("KPIL.NS",        "POWERGRID.NS",   0.18, "T&D infrastructure projects"),
+    ("POLYCAB.NS",     "POWERGRID.NS",   0.04, "Power cables for grid infra"),
+    ("KEI.NS",         "POWERGRID.NS",   0.04, "Specialty cables"),
+    ("BHEL.NS",        "NTPC.NS",        0.25, "Power generation equipment, boilers, turbines for NTPC plants"),
+    ("BHEL.NS",        "TATAPOWER.NS",   0.10, "Power equipment for Tata Power thermal plants"),
+    ("THERMAX.NS",     "NTPC.NS",        0.05, "Industrial boilers, environment systems"),
+    ("CUMMINSIND.NS",  "TATAPOWER.NS",   0.03, "Backup generators for utility operations"),
+
+    # ============ PHARMA — API & INTERMEDIATES CHAIN ============
+    # Big pharma majors (Sun, Dr Reddy, Cipla, Lupin) buy APIs and intermediates from
+    # specialty chemical companies and contract manufacturers.
+    # Divi's Labs is the cleanest API supplier story; Aarti and Deepak Nitrite
+    # provide specialty intermediates.
+    ("DIVISLAB.NS",    "SUNPHARMA.NS",   0.08, "API supply to global pharma incl. Sun"),
+    ("DIVISLAB.NS",    "DRREDDY.NS",     0.06, "API and intermediates"),
+    ("DIVISLAB.NS",    "CIPLA.NS",       0.05, "API supply"),
+    ("AARTIIND.NS",    "SUNPHARMA.NS",   0.04, "Specialty pharma intermediates"),
+    ("DEEPAKNTR.NS",   "SUNPHARMA.NS",   0.03, "Phenol derivatives, pharma inputs"),
+    ("NAVINFLUOR.NS",  "SUNPHARMA.NS",   0.03, "Specialty fluorochemicals"),
+
+    # ============ REALTY / CONSTRUCTION ============
+    # Real estate developers consume massive cement + steel volumes
+    ("ULTRACEMCO.NS",  "DLF.NS",         0.02, "Cement for DLF projects"),
+    ("AMBUJACEM.NS",   "GODREJPROP.NS",  0.02, "Cement supply for Godrej projects"),
+    ("ACC.NS",         "OBEROIRLTY.NS",  0.02, "Cement for Mumbai residential projects"),
+    ("TATASTEEL.NS",   "DLF.NS",         0.02, "Structural steel for high-rise"),
+    ("JSWSTEEL.NS",    "GODREJPROP.NS",  0.02, "TMT and structural steel"),
+
+    # ============ FMCG / CONSUMER EXPANSION ============
+    # FMCG majors consume sugar, dairy proxies, palm oil (no listed Indian palm oil major)
+    # Sugar mills already linked to Britannia/Nestle in existing edges; add Marico, Dabur
+    ("BALRAMCHIN.NS",  "MARICO.NS",      0.02, "Sugar for confectionery edibles"),
+    ("DHAMPURSUG.NS",  "ITC.NS",         0.03, "Sugar input for ITC foods division"),
+
+    # ============ EMS / SEMICONDUCTOR PROXY CHAIN ============
+    # Indian EMS (Kaynes, Dixon, Syrma) assemble for global chip clients but are downstream consumers
+    # of international semis. They appear as customers of NVDA/AMD/etc — but those edges
+    # cross into INTERNATIONAL tickers which aren't in the customer-supplier scope by design.
+    # Cleaner Indian-only edges: Dixon supplies appliance brands that aren't in our universe
+    # so the chain mostly lives outside our graph. Skipping for now — note added in OBSERVATIONS.
 ]
 
 
