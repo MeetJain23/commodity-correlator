@@ -1,5 +1,5 @@
 # Observations Log
-## Project Status: Complete (May 2026)
+## Project Status: Completed (May 2026)
 
 This system is now in **maintenance mode**. Active development moves to a separate project building on different premises (macro overlay, international supply chains, fundamental drivers).
 
@@ -107,4 +107,4 @@ can come back and check whether the read of the data held up.
 
 ---
 
-*Last updated: 2026-05-24*
+*Last updated: 2026-05-25*
